@@ -548,5 +548,6 @@ uv run playwright install chromium
 23. **No overlapping elements**: Shapes and text don't overlap unintentionally
 24. **Even spacing**: Similar elements have consistent spacing
 25. **Arrows land correctly**: Arrows connect to intended elements without crossing others
+    - Arrow `startBinding`/`endBinding` must reference the actual `id` of the element at each end — null bindings cause drift
 26. **Readable at export size**: Text is legible in the rendered PNG
 27. **Balanced composition**: No large empty voids or overcrowded regions
