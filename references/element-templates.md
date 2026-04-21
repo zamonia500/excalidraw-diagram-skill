@@ -180,3 +180,36 @@ Copy-paste JSON templates for each Excalidraw element type. The `strokeColor` an
 ```
 
 For curves: use 3+ points in `points` array.
+
+## Frame
+```json
+{
+  "type": "frame",
+  "id": "<id>",
+  "x": 0, "y": 0,
+  "width": 400, "height": 600,
+  "name": "<label>",
+  "isCollapsed": false,
+  "strokeColor": "#868e96",
+  "backgroundColor": "transparent",
+  "fillStyle": "solid",
+  "strokeWidth": 1,
+  "strokeStyle": "solid",
+  "roughness": 0,
+  "opacity": 100,
+  "angle": 0,
+  "groupIds": [],
+  "frameId": null,
+  "boundElements": [],
+  "seed": 12345,
+  "version": 1,
+  "versionNonce": 67890,
+  "isDeleted": false,
+  "updated": 1700000000000,
+  "index": "a1",
+  "link": null,
+  "locked": false
+}
+```
+
+**Rule**: Every element that lives inside a frame must have `"frameId": "<frame_id>"` set to that frame's `id`. Elements outside all frames keep `"frameId": null`.
