@@ -151,6 +151,11 @@ def render(
             device_scale_factor=scale,
         )
 
+        # Capture browser console errors for debugging
+        console_messages: list[str] = []
+        page.on("console", lambda msg: console_messages.append(f"[{msg.type}] {msg.text}"))
+        page.on("pageerror", lambda err: console_messages.append(f"[pageerror] {err}"))
+
         # Load the template. `break_sources` forces the named CDNs to fail so the
         # fallback path can be tested without waiting for a real outage.
         if break_sources:
@@ -170,6 +175,9 @@ def render(
                 f"Template: {template_path}",
                 file=sys.stderr,
             )
+            print("Browser console:", file=sys.stderr)
+            for m in console_messages:
+                print(f"  {m}", file=sys.stderr)
             browser.close()
             sys.exit(1)
 
