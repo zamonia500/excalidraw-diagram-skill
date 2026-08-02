@@ -16,6 +16,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from urllib.parse import urlencode
 
 
 def validate_excalidraw(data: dict) -> list[str]:
@@ -74,6 +75,7 @@ def render(
     output_path: Path | None = None,
     scale: int = 2,
     max_width: int = 1920,
+    break_sources: list[str] | None = None,
 ) -> Path:
     """Render an .excalidraw file to PNG. Returns the output PNG path."""
     # Import playwright here so validation errors show before import errors
@@ -137,11 +139,40 @@ def render(
             device_scale_factor=scale,
         )
 
-        # Load the template
+        # Load the template. `break_sources` forces the named CDNs to fail so the
+        # fallback path can be tested without waiting for a real outage.
+        if break_sources:
+            template_url += "?" + urlencode([("break", s) for s in break_sources])
         page.goto(template_url)
 
-        # Wait for the ES module to load (imports from esm.sh)
-        page.wait_for_function("window.__moduleReady === true", timeout=30000)
+        # Wait for the library to load. The template tries each CDN in turn and sets
+        # __moduleReady = false plus __moduleError once all of them failed, so a dead
+        # CDN surfaces as a message instead of a stall.
+        try:
+            page.wait_for_function(
+                "window.__moduleReady === true || window.__moduleError", timeout=60000
+            )
+        except Exception:
+            print(
+                "ERROR: Excalidraw library did not load within 60s — no CDN reachable. "
+                f"Template: {template_path}",
+                file=sys.stderr,
+            )
+            browser.close()
+            sys.exit(1)
+
+        module_error = page.evaluate("window.__moduleError || null")
+        if module_error:
+            print(f"ERROR: Failed to load Excalidraw, all sources failed: {module_error}", file=sys.stderr)
+            browser.close()
+            sys.exit(1)
+
+        # If the primary CDN was skipped, say so — a silent fallback hides an outage
+        # until the second source dies too.
+        failed = page.evaluate("window.__moduleAttempts || []")
+        if failed:
+            used = page.evaluate("window.__moduleSource")
+            print(f"WARNING: fell back to {used} — {'; '.join(failed)}", file=sys.stderr)
 
         # Inject the diagram data and render
         json_str = json.dumps(data)
@@ -175,13 +206,15 @@ def main() -> None:
     parser.add_argument("--output", "-o", type=Path, default=None, help="Output PNG path (default: same name with .png)")
     parser.add_argument("--scale", "-s", type=int, default=2, help="Device scale factor (default: 2)")
     parser.add_argument("--width", "-w", type=int, default=1920, help="Max viewport width (default: 1920)")
+    parser.add_argument("--break-source", action="append", default=None, metavar="NAME",
+                        help="Force a CDN to fail (esm.sh | jsDelivr) to test the fallback path")
     args = parser.parse_args()
 
     if not args.input.exists():
         print(f"ERROR: File not found: {args.input}", file=sys.stderr)
         sys.exit(1)
 
-    png_path = render(args.input, args.output, args.scale, args.width)
+    png_path = render(args.input, args.output, args.scale, args.width, args.break_source)
     print(str(png_path))
 
 

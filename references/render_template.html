@@ -8,12 +8,95 @@
     #root { display: inline-block; }
     #root svg { display: block; }
   </style>
+
+  <!-- Excalidraw ships React as a peer dependency. We load the library with
+       ?external=react,react-dom and resolve those specifiers via this importmap,
+       matching the official excalidraw/excalidraw browser example.
+
+       Never import without a version. The renderer used to hang because
+       `https://esm.sh/@excalidraw/excalidraw?bundle` resolved to whatever esm.sh
+       considered latest — and 0.18.1's dependency graph contains a subpath
+       (@braintree/sanitize-url/.../constants.mjs) that 404s. A 404 anywhere in the
+       graph means the top-level module never executes, so the page stalls silently.
+       0.18.0 is fine, including via ?bundle: the version is what matters, not the
+       build flavour. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@19.0.0",
+        "react/jsx-runtime": "https://esm.sh/react@19.0.0/jsx-runtime",
+        "react-dom": "https://esm.sh/react-dom@19.0.0",
+        "react-dom/client": "https://esm.sh/react-dom@19.0.0/client"
+      }
+    }
+  </script>
 </head>
 <body>
   <div id="root"></div>
 
   <script type="module">
-    import { exportToSvg } from "https://esm.sh/@excalidraw/excalidraw?bundle";
+    // Pinned version — bump deliberately, and re-run the render smoke test after.
+    // The pin is the actual fix: unpinned, esm.sh resolved to a release whose
+    // dependency graph contained a dead URL. Never import without a version.
+    const EXCALIDRAW_VERSION = "0.18.0";
+
+    // Two independent CDNs, tried in order. One dead CDN must not stop the render —
+    // that is exactly how this broke before. Each attempt is capped, because a
+    // stalled module graph never rejects on its own; it just hangs forever.
+    const SOURCES = [
+      {
+        name: "esm.sh",
+        module: `https://esm.sh/@excalidraw/excalidraw@${EXCALIDRAW_VERSION}/dist/prod/index.js?external=react,react-dom`,
+        assets: `https://esm.sh/@excalidraw/excalidraw@${EXCALIDRAW_VERSION}/dist/prod/`,
+      },
+      {
+        name: "jsDelivr",
+        module: `https://cdn.jsdelivr.net/npm/@excalidraw/excalidraw@${EXCALIDRAW_VERSION}/+esm`,
+        assets: `https://cdn.jsdelivr.net/npm/@excalidraw/excalidraw@${EXCALIDRAW_VERSION}/dist/prod/`,
+      },
+    ];
+    const PER_SOURCE_TIMEOUT_MS = 20000;
+
+    // Test hook: ?break=esm.sh makes that source fail, so the fallback path can be
+    // exercised without waiting for a real outage.
+    const broken = new URLSearchParams(location.search).getAll("break");
+
+    const withTimeout = (promise, ms, label) => Promise.race([
+      promise,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`${label}: no response within ${ms}ms`)), ms)),
+    ]);
+
+    let exportToSvg;
+    const attempts = [];
+
+    for (const source of SOURCES) {
+      try {
+        if (broken.includes(source.name)) {
+          throw new Error("forced failure via ?break= (test hook)");
+        }
+        // Fonts are fetched relative to this path, so it must match the source we load.
+        window.EXCALIDRAW_ASSET_PATH = source.assets;
+        const mod = await withTimeout(
+          import(source.module), PER_SOURCE_TIMEOUT_MS, source.name);
+        if (typeof mod.exportToSvg !== "function") {
+          throw new Error("exportToSvg missing from module export");
+        }
+        exportToSvg = mod.exportToSvg;
+        window.__moduleSource = source.name;
+        break;
+      } catch (err) {
+        attempts.push(`${source.name}: ${err && err.message ? err.message : err}`);
+      }
+    }
+
+    if (!exportToSvg) {
+      // Signal failure instead of leaving the loader hanging until timeout.
+      window.__moduleError = attempts.join(" | ");
+      window.__moduleReady = false;
+      throw new Error(window.__moduleError);
+    }
+    window.__moduleAttempts = attempts;
 
     window.renderDiagram = async function(jsonData) {
       try {
