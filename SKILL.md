@@ -349,6 +349,131 @@ Timeline:           Tree:
 
 Lines + free-floating text often creates a cleaner result than boxes + contained text.
 
+### Sequence Diagram
+
+Use for: protocol flows, API call chains, actor interactions, message passing.
+
+**Coordinate recipe:**
+
+| Element | Rule |
+|---------|------|
+| **Participant lifeline** | Vertical dashed `line`, one per actor, spaced **200px apart**. Actor 1 at x=100, actor 2 at x=300, actor 3 at x=500, … |
+| **Participant label** | `rectangle` (width=120, height=40) centered on the lifeline x, at y=20 |
+| **Lifeline extent** | Dashed line from y=80 down to `(message_count * 60) + 100` |
+| **Messages** | Horizontal `arrow` at y=120, 180, 240 … (60px increments). Free-floating `text` label above the midpoint |
+| **Activation box** | 20px-wide `rectangle` on the lifeline, `backgroundColor: "#e9ecef"`, covering the active duration |
+| **Self-message** | Arrow with points `[[x, 0], [x+50, 0], [x+50, 30], [x, 30]]` relative to the lifeline x |
+
+**Minimal Python template (3 participants, 3 messages):**
+
+```python
+import json, math
+
+def seq_diagram(participants, messages):
+    elements = []
+    seed = 1000
+    spacing = 200
+    msg_start_y = 120
+    msg_step = 60
+    lifeline_top = 80
+    lifeline_bot = len(messages) * msg_step + 100
+
+    # Participant labels + lifelines
+    for i, name in enumerate(participants):
+        x = 100 + i * spacing
+        seed += 1
+        # Label rectangle
+        elements.append({
+            "type": "rectangle", "id": f"p{i}_rect",
+            "x": x - 60, "y": 20, "width": 120, "height": 40,
+            "strokeColor": "#343a40", "backgroundColor": "#e9ecef",
+            "fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "solid",
+            "roughness": 0, "opacity": 100, "angle": 0,
+            "seed": seed, "version": 1, "versionNonce": seed + 1,
+            "isDeleted": False, "groupIds": [],
+            "boundElements": [{"id": f"p{i}_label", "type": "text"}],
+            "link": None, "locked": False, "roundness": {"type": 3}
+        })
+        seed += 2
+        # Label text
+        elements.append({
+            "type": "text", "id": f"p{i}_label",
+            "x": x - 60, "y": 28, "width": 120, "height": 25,
+            "text": name, "originalText": name,
+            "fontSize": 16, "fontFamily": 3,
+            "textAlign": "center", "verticalAlign": "middle",
+            "strokeColor": "#343a40", "backgroundColor": "transparent",
+            "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
+            "roughness": 0, "opacity": 100, "angle": 0,
+            "seed": seed, "version": 1, "versionNonce": seed + 1,
+            "isDeleted": False, "groupIds": [], "boundElements": None,
+            "link": None, "locked": False, "containerId": f"p{i}_rect", "lineHeight": 1.25
+        })
+        seed += 2
+        # Lifeline
+        elements.append({
+            "type": "line", "id": f"p{i}_life",
+            "x": x, "y": lifeline_top,
+            "width": 0, "height": lifeline_bot - lifeline_top,
+            "strokeColor": "#868e96", "backgroundColor": "transparent",
+            "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "dashed",
+            "roughness": 0, "opacity": 100, "angle": 0,
+            "seed": seed, "version": 1, "versionNonce": seed + 1,
+            "isDeleted": False, "groupIds": [], "boundElements": None,
+            "link": None, "locked": False,
+            "points": [[0, 0], [0, lifeline_bot - lifeline_top]]
+        })
+        seed += 2
+
+    # Messages
+    for j, (frm, to, label) in enumerate(messages):
+        y = msg_start_y + j * msg_step
+        x1 = 100 + frm * spacing
+        x2 = 100 + to * spacing
+        mid_x = (x1 + x2) / 2
+        seed += 1
+        elements.append({
+            "type": "arrow", "id": f"msg{j}_arrow",
+            "x": x1, "y": y, "width": x2 - x1, "height": 0,
+            "strokeColor": "#343a40", "backgroundColor": "transparent",
+            "fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "solid",
+            "roughness": 0, "opacity": 100, "angle": 0,
+            "seed": seed, "version": 1, "versionNonce": seed + 1,
+            "isDeleted": False, "groupIds": [], "boundElements": None,
+            "link": None, "locked": False,
+            "points": [[0, 0], [x2 - x1, 0]],
+            "startBinding": None, "endBinding": None,
+            "startArrowhead": None, "endArrowhead": "arrow"
+        })
+        seed += 2
+        elements.append({
+            "type": "text", "id": f"msg{j}_label",
+            "x": mid_x - 60, "y": y - 20, "width": 120, "height": 20,
+            "text": label, "originalText": label,
+            "fontSize": 14, "fontFamily": 3,
+            "textAlign": "center", "verticalAlign": "top",
+            "strokeColor": "#343a40", "backgroundColor": "transparent",
+            "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
+            "roughness": 0, "opacity": 100, "angle": 0,
+            "seed": seed, "version": 1, "versionNonce": seed + 1,
+            "isDeleted": False, "groupIds": [], "boundElements": None,
+            "link": None, "locked": False, "containerId": None, "lineHeight": 1.25
+        })
+        seed += 2
+
+    return {"type": "excalidraw", "version": 2,
+            "source": "https://excalidraw.com",
+            "elements": elements,
+            "appState": {"viewBackgroundColor": "#ffffff", "gridSize": 20},
+            "files": {}}
+
+diagram = seq_diagram(
+    participants=["Client", "Server", "Database"],
+    messages=[(0, 1, "GET /users"), (1, 2, "SELECT *"), (2, 1, "rows")]
+)
+print(json.dumps(diagram, indent=2))
+```
+
 ---
 
 ## Shape Meaning
@@ -444,6 +569,60 @@ Position alone doesn't show relationships. If A relates to B, there must be an a
 ```
 
 Settings: `fontSize: 16`, `fontFamily: 3`, `textAlign: "center"`, `verticalAlign: "middle"`
+
+---
+
+## Sizing Containers for Text
+
+**The problem**: Hardcoded guesses for `width`/`height` cause text overflow in rendered diagrams. A container that looks right in JSON can clip its label at render time, especially for multi-line or long strings.
+
+### Heuristic formula (always available)
+
+Use when you don't have Node.js canvas available:
+
+```python
+width  = max(len(line) for line in text.split('\n')) * font_size * 0.6 + 40
+height = text.count('\n') * font_size * 1.35 + font_size * 1.35 + 24
+```
+
+`font_size` is typically 16–20 for body text.
+
+### Node.js canvas measurement (more accurate)
+
+Use when precision matters (dense labels, code snippets, narrow containers).
+
+**`references/measure-text.js`** — run directly with `node`:
+
+```javascript
+const { createCanvas } = require('canvas');
+function measureText(text, fontSize, fontFamily) {
+  const cv = createCanvas(1, 1);
+  const ctx = cv.getContext('2d');
+  ctx.font = `${fontSize}px ${fontFamily}`;
+  const lines = text.split('\n');
+  const w = Math.max(...lines.map(l => ctx.measureText(l).width));
+  return { width: Math.ceil(w) + 40, height: lines.length * Math.ceil(fontSize * 1.35) + 24 };
+}
+process.stdout.write(JSON.stringify(
+  measureText(process.argv[2], parseInt(process.argv[3]), process.argv[4] || 'Virgil')
+));
+```
+
+**Python wrapper** to call it from diagram generation code:
+
+```python
+import subprocess, json
+def measure_text(text, font_size=16, font_family="Virgil"):
+    r = subprocess.run(["node", "references/measure-text.js", text, str(font_size), font_family],
+                       capture_output=True, text=True)
+    return json.loads(r.stdout)
+```
+
+> Note: requires `npm install canvas` in the `references/` directory.
+
+### Padding rule
+
+Always add at least **40px horizontal padding** and **24px vertical padding** on top of the measured text dimensions. Both formulas above already include this.
 
 ---
 
