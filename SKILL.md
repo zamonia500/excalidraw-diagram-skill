@@ -508,6 +508,23 @@ uv sync
 uv run playwright install chromium
 ```
 
+### If Rendering Fails
+The renderer loads Excalidraw from a CDN at render time, so it needs network access. It tries two
+independent CDNs in order (esm.sh, then jsDelivr), each with its own timeout.
+
+- **`WARNING: fell back to jsDelivr`** — rendering succeeded, but the primary CDN is down. Not
+  urgent; worth checking before the second source dies too.
+- **`Failed to load Excalidraw, all sources failed`** — the message lists what each source did.
+  Do **not** "fix" this by raising a timeout: a broken CDN import stalls the module graph, and a
+  longer timeout only makes the hang last longer. Check the failing URL in a browser, then bump
+  `EXCALIDRAW_VERSION` in `references/render_template.html`.
+- **Always import a pinned version.** The original hang came from
+  `https://esm.sh/@excalidraw/excalidraw?bundle` with no version: it resolved to 0.18.1, whose
+  dependency graph contains a 404ing subpath. 0.18.0 works fine, `?bundle` included — the version is
+  what matters, not the build flavour.
+- **Test the fallback** without waiting for an outage:
+  `uv run python render_excalidraw.py <file>.excalidraw --break-source esm.sh`
+
 ---
 
 ## Quality Checklist
