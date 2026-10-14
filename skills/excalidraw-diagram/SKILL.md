@@ -655,6 +655,8 @@ See `references/element-templates.md` for copy-paste JSON templates for each ele
 
 You cannot judge a diagram from JSON alone. After generating or editing the Excalidraw JSON, you MUST render it to PNG, view the image, and fix what you see — in a loop until it's right. This is a core part of the workflow, not a final check.
 
+In the commands below, replace `<skill-dir>` with the absolute path of this skill's directory (see **Paths** at the top). If the renderer has never been set up on this machine, run **First-Time Setup** (end of this section) first.
+
 ### Pre-Render Validation (Run Before Rendering)
 
 Structural errors — dangling binding references, duplicate IDs, invalid types — are invisible in a rendered PNG; validation catches them before they silently corrupt the diagram.
