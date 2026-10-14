@@ -473,6 +473,16 @@ See `references/element-templates.md` for copy-paste JSON templates for each ele
 
 You cannot judge a diagram from JSON alone. After generating or editing the Excalidraw JSON, you MUST render it to PNG, view the image, and fix what you see — in a loop until it's right. This is a core part of the workflow, not a final check.
 
+### Pre-Render Validation (Run Before Rendering)
+
+Structural errors — dangling binding references, duplicate IDs, invalid types — are invisible in a rendered PNG; validation catches them before they silently corrupt the diagram.
+
+```bash
+uv run python references/validate_excalidraw.py <path-to-file.excalidraw>
+```
+
+Fix **all** errors reported before proceeding to render. A non-zero exit means the diagram has structural problems that will not be caught by visual inspection.
+
 ### How to Render
 
 ```bash
@@ -553,6 +563,9 @@ independent CDNs in order (esm.sh, then jsDelivr), each with its own timeout.
 ---
 
 ## Quality Checklist
+
+### Pre-Render (Run First, Before Anything Else)
+0. **Validated**: `validate_excalidraw.py` ran with no errors
 
 ### Depth & Evidence (Check First for Technical Diagrams)
 1. **Research done**: Did you look up actual specs, formats, event names?
