@@ -1,13 +1,12 @@
 """Render Excalidraw JSON to PNG using Playwright + headless Chromium.
 
-Usage:
-    cd .claude/skills/excalidraw-diagram/references
-    uv run python render_excalidraw.py <path-to-file.excalidraw> [--output path.png] [--scale 2] [--width 1920]
+Usage (<skill-dir> is wherever the skill is installed; works from any cwd):
+    uv run --project <skill-dir>/references python <skill-dir>/references/render_excalidraw.py \
+        <path-to-file.excalidraw> [--output path.png] [--scale 2] [--width 1920]
 
 First-time setup:
-    cd .claude/skills/excalidraw-diagram/references
-    uv sync
-    uv run playwright install chromium
+    uv sync --project <skill-dir>/references
+    uv run --project <skill-dir>/references playwright install chromium
 """
 
 from __future__ import annotations
@@ -17,6 +16,11 @@ import json
 import sys
 from pathlib import Path
 from urllib.parse import urlencode
+
+# Directory holding this script, pyproject.toml and render_template.html. Used for
+# setup hints so they point at the real install location (.claude/skills,
+# ~/.claude/skills, .agents/skills, ... depending on the agent).
+REFS_DIR = Path(__file__).resolve().parent
 
 
 def validate_excalidraw(data: dict) -> list[str]:
@@ -83,7 +87,7 @@ def render(
         from playwright.sync_api import sync_playwright
     except ImportError:
         print("ERROR: playwright not installed.", file=sys.stderr)
-        print("Run: cd .claude/skills/excalidraw-diagram/references && uv sync && uv run playwright install chromium", file=sys.stderr)
+        print(f"Run: uv sync --project {REFS_DIR} && uv run --project {REFS_DIR} playwright install chromium", file=sys.stderr)
         sys.exit(1)
 
     # Read and validate
@@ -117,7 +121,7 @@ def render(
         output_path = excalidraw_path.with_suffix(".png")
 
     # Template path (same directory as this script)
-    template_path = Path(__file__).parent / "render_template.html"
+    template_path = REFS_DIR / "render_template.html"
     if not template_path.exists():
         print(f"ERROR: Template not found at {template_path}", file=sys.stderr)
         sys.exit(1)
@@ -141,7 +145,7 @@ def render(
             if not fell_back:
                 if "Executable doesn't exist" in str(e) or "browserType.launch" in str(e):
                     print("ERROR: Chromium not installed for Playwright.", file=sys.stderr)
-                    print("Run: cd .claude/skills/excalidraw-diagram/references && uv run playwright install chromium", file=sys.stderr)
+                    print(f"Run: uv run --project {REFS_DIR} playwright install chromium", file=sys.stderr)
                     print("Or install a system Chrome/Chromium for the channel fallback.", file=sys.stderr)
                     sys.exit(1)
                 raise

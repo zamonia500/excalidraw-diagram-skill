@@ -7,7 +7,9 @@ description: Create Excalidraw diagram JSON files that make visual arguments. Us
 
 Generate `.excalidraw` JSON files that **argue visually**, not just display information.
 
-**Setup:** If the user asks you to set up this skill (renderer, dependencies, etc.), see `README.md` for instructions.
+**Paths:** `<skill-dir>` below means the directory containing this SKILL.md (Claude Code shows it as "Base directory for this skill"). Where it lives depends on how and for which agent the skill was installed (`.claude/skills/`, `~/.claude/skills/`, `.agents/skills/`, …), so substitute the actual absolute path rather than assuming one. Relative paths like `references/color-palette.md` are relative to `<skill-dir>`.
+
+**Setup:** If the user asks you to set up this skill (renderer, dependencies, etc.), follow **First-Time Setup** under Render & Validate below.
 
 ## Customization
 
@@ -591,7 +593,7 @@ height = text.count('\n') * font_size * 1.35 + font_size * 1.35 + 24
 
 Use when precision matters (dense labels, code snippets, narrow containers).
 
-**`references/measure-text.js`** — run directly with `node`:
+**`references/measure-text.js`** — run directly with `node <skill-dir>/references/measure-text.js "<text>" <font_size> [font_family]`:
 
 ```javascript
 const { createCanvas } = require('canvas');
@@ -612,13 +614,14 @@ process.stdout.write(JSON.stringify(
 
 ```python
 import subprocess, json
+MEASURE_JS = "<skill-dir>/references/measure-text.js"  # absolute path to the installed script
 def measure_text(text, font_size=16, font_family="Virgil"):
-    r = subprocess.run(["node", "references/measure-text.js", text, str(font_size), font_family],
+    r = subprocess.run(["node", MEASURE_JS, text, str(font_size), font_family],
                        capture_output=True, text=True)
     return json.loads(r.stdout)
 ```
 
-> Note: requires `npm install canvas` in the `references/` directory.
+> Note: requires the `canvas` package next to the script: `npm install canvas --prefix <skill-dir>/references`.
 
 ### Padding rule
 
@@ -657,7 +660,7 @@ You cannot judge a diagram from JSON alone. After generating or editing the Exca
 Structural errors — dangling binding references, duplicate IDs, invalid types — are invisible in a rendered PNG; validation catches them before they silently corrupt the diagram.
 
 ```bash
-uv run python references/validate_excalidraw.py <path-to-file.excalidraw>
+python3 <skill-dir>/references/validate_excalidraw.py <path-to-file.excalidraw>
 ```
 
 Fix **all** errors reported before proceeding to render. A non-zero exit means the diagram has structural problems that will not be caught by visual inspection.
@@ -665,10 +668,10 @@ Fix **all** errors reported before proceeding to render. A non-zero exit means t
 ### How to Render
 
 ```bash
-cd .claude/skills/excalidraw-diagram/references && uv run python render_excalidraw.py <path-to-file.excalidraw>
+uv run --project <skill-dir>/references python <skill-dir>/references/render_excalidraw.py <path-to-file.excalidraw>
 ```
 
-This outputs a PNG next to the `.excalidraw` file. Then use the **Read tool** on the PNG to actually view it.
+Run it from wherever you are — `--project` points uv at the renderer's environment, so relative diagram paths still resolve against your current directory. This outputs a PNG next to the `.excalidraw` file. Then use the **Read tool** on the PNG to actually view it.
 
 ### The Loop
 
@@ -715,12 +718,12 @@ The loop is done when:
 - You'd be comfortable showing it to someone without caveats
 
 ### First-Time Setup
-If the render script hasn't been set up yet:
+If the render script hasn't been set up yet (requires [uv](https://docs.astral.sh/uv/)):
 ```bash
-cd .claude/skills/excalidraw-diagram/references
-uv sync
-uv run playwright install chromium
+uv sync --project <skill-dir>/references
+uv run --project <skill-dir>/references playwright install chromium
 ```
+If Playwright's Chromium can't be installed on this OS, the renderer falls back to a system Chrome/Chromium.
 
 ### If Rendering Fails
 The renderer loads Excalidraw from a CDN at render time, so it needs network access. It tries two
@@ -737,7 +740,7 @@ independent CDNs in order (esm.sh, then jsDelivr), each with its own timeout.
   dependency graph contains a 404ing subpath. 0.18.0 works fine, `?bundle` included — the version is
   what matters, not the build flavour.
 - **Test the fallback** without waiting for an outage:
-  `uv run python render_excalidraw.py <file>.excalidraw --break-source esm.sh`
+  `uv run --project <skill-dir>/references python <skill-dir>/references/render_excalidraw.py <file>.excalidraw --break-source esm.sh`
 
 ---
 

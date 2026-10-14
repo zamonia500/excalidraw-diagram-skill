@@ -14,7 +14,8 @@ Catches JSON errors that the visual render loop cannot detect:
   - Non-string index (missing index is allowed)
 
 Usage:
-    uv run python references/validate_excalidraw.py <path-to-file.excalidraw>
+    python3 <skill-dir>/references/validate_excalidraw.py <path-to-file.excalidraw>
+    python3 <skill-dir>/references/validate_excalidraw.py --test   # built-in tests
 """
 
 import json
