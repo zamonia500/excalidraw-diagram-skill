@@ -673,7 +673,7 @@ Fix **all** errors reported before proceeding to render. A non-zero exit means t
 uv run --project <skill-dir>/references python <skill-dir>/references/render_excalidraw.py <path-to-file.excalidraw>
 ```
 
-Run it from wherever you are — `--project` points uv at the renderer's environment, so relative diagram paths still resolve against your current directory. This outputs a PNG next to the `.excalidraw` file. Then use the **Read tool** on the PNG to actually view it.
+Run it from wherever you are — `--project` points uv at the renderer's environment, so relative diagram paths still resolve against your current directory. This writes `<name>.excalidraw.png` next to the `.excalidraw` file (e.g. `diagram.excalidraw` → `diagram.excalidraw.png`). The scene is embedded in the PNG, so it can be reopened and edited on excalidraw.com or in editors that recognize the `.excalidraw.png` suffix — it's a shareable deliverable, not just a preview. Then use the **Read tool** on the PNG to actually view it.
 
 ### The Loop
 
