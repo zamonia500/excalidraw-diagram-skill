@@ -98,10 +98,345 @@
     }
     window.__moduleAttempts = attempts;
 
+    // Padding constants matching Excalidraw's internal bound-text padding.
+    // Excalidraw uses BOUND_TEXT_PADDING = 5 for the base, but effective
+    // padding varies: rectangles get ~10px each side, diamonds/ellipses
+    // need inscribed-rectangle scaling.
+    const CONTAINER_PADDING = 10;
+    const SQRT2 = Math.SQRT2; // ~1.414
+
+    /**
+     * Detect text elements overflowing their containers and fix by expanding
+     * containers. Mutates the elements array in place. Returns true if any
+     * corrections were made.
+     *
+     * @param {Array} elements - The Excalidraw elements array (mutated in place)
+     * @param {SVGSVGElement} svg - The rendered SVG element (for measuring text)
+     * @returns {boolean} Whether any corrections were made
+     */
+    function detectAndFixOverflows(elements, svg) {
+      const ctm = svg.getScreenCTM();
+      if (!ctm) return false;
+      const invCTM = ctm.inverse();
+
+      // Build element lookup by ID.
+      const byId = new Map();
+      for (const el of elements) {
+        byId.set(el.id, el);
+      }
+
+      // --- Phase 1: Fix text-in-container overflows ---
+
+      // Snapshot original bounds before any corrections (for containment phase).
+      const originalBounds = new Map();
+      for (const el of elements) {
+        if (el.isDeleted) continue;
+        if (["rectangle", "diamond", "ellipse"].includes(el.type)) {
+          originalBounds.set(el.id, {
+            x: el.x, y: el.y, width: el.width, height: el.height
+          });
+        }
+      }
+
+      let anyCorrections = false;
+
+      for (const textEl of elements) {
+        if (textEl.isDeleted || textEl.type !== "text" || !textEl.containerId) continue;
+
+        const container = byId.get(textEl.containerId);
+        if (!container || container.isDeleted) continue;
+        if (!["rectangle", "diamond", "ellipse"].includes(container.type)) continue;
+
+        // Find the rendered text node in the SVG by matching text content.
+        // Excalidraw's exportToSvg does NOT set element IDs on SVG nodes,
+        // so we match by textContent instead.
+        const svgTextNodes = [...svg.querySelectorAll('text')];
+        const svgTextNode = svgTextNodes.find(t => t.textContent === textEl.text);
+        if (!svgTextNode) continue;
+
+        // Measure actual rendered text bounds (use the parent <g> for full bounds
+        // in case the text has multiple tspan children).
+        const measureTarget = svgTextNode.parentElement?.tagName === 'g' ? svgTextNode.parentElement : svgTextNode;
+        const textRect = measureTarget.getBoundingClientRect();
+        if (textRect.width === 0 && textRect.height === 0) continue;
+
+        // Convert pixel bounds to SVG coordinate space.
+        const svgMin = new DOMPoint(textRect.left, textRect.top).matrixTransform(invCTM);
+        const svgMax = new DOMPoint(textRect.right, textRect.bottom).matrixTransform(invCTM);
+        const measuredW = svgMax.x - svgMin.x;
+        const measuredH = svgMax.y - svgMin.y;
+
+        // Determine required container size based on container type.
+        let requiredW, requiredH;
+        if (container.type === "rectangle") {
+          requiredW = measuredW + CONTAINER_PADDING * 2;
+          requiredH = measuredH + CONTAINER_PADDING * 2;
+        } else {
+          // Diamond and ellipse: text must fit inside the inscribed rectangle.
+          // Inscribed rect of a diamond/ellipse with dims W x H is W/sqrt(2) x H/sqrt(2).
+          // So to fit text of size tw x th, we need container W = tw * sqrt(2), H = th * sqrt(2).
+          requiredW = measuredW * SQRT2 + CONTAINER_PADDING * 2;
+          requiredH = measuredH * SQRT2 + CONTAINER_PADDING * 2;
+        }
+
+        // Only expand, never shrink.
+        const newW = Math.max(container.width, requiredW);
+        const newH = Math.max(container.height, requiredH);
+
+        if (newW <= container.width && newH <= container.height) continue;
+
+        // Expand container centered on its original midpoint.
+        const dw = newW - container.width;
+        const dh = newH - container.height;
+        container.x -= dw / 2;
+        container.y -= dh / 2;
+        container.width = newW;
+        container.height = newH;
+
+        // Re-center the text element within the expanded container.
+        if (container.type === "rectangle") {
+          textEl.x = container.x + CONTAINER_PADDING;
+          textEl.y = container.y + (newH - measuredH) / 2;
+          textEl.width = measuredW;
+          textEl.height = measuredH;
+        } else {
+          // Diamond/ellipse: center text in the inscribed rectangle.
+          textEl.x = container.x + (newW - measuredW) / 2;
+          textEl.y = container.y + (newH - measuredH) / 2;
+          textEl.width = measuredW;
+          textEl.height = measuredH;
+        }
+
+        anyCorrections = true;
+      }
+
+      // --- Phase 1.5: Recalculate arrow endpoints for expanded containers ---
+      // Arrows bound to expanded containers still have their old endpoint positions.
+      // Recalculate so they connect to the new container edges.
+
+      if (anyCorrections) {
+        // Build set of expanded container IDs for quick lookup.
+        const expandedIds = new Set();
+        for (const el of elements) {
+          if (el.isDeleted || !["rectangle", "diamond", "ellipse"].includes(el.type)) continue;
+          const ob = originalBounds.get(el.id);
+          if (!ob) continue;
+          if (el.width !== ob.width || el.height !== ob.height || el.x !== ob.x || el.y !== ob.y) {
+            expandedIds.add(el.id);
+          }
+        }
+
+        for (const arrow of elements) {
+          if (arrow.isDeleted || arrow.type !== "arrow") continue;
+          if (!arrow.points || arrow.points.length < 2) continue;
+
+          const startBound = arrow.startBinding;
+          const endBound = arrow.endBinding;
+
+          // Adjust start point if bound to an expanded container.
+          if (startBound && expandedIds.has(startBound.elementId)) {
+            const container = byId.get(startBound.elementId);
+            const ob = originalBounds.get(startBound.elementId);
+            if (container && ob) {
+              const oldCx = ob.x + ob.width / 2;
+              const oldCy = ob.y + ob.height / 2;
+              // Arrow start absolute position.
+              const startX = arrow.x + arrow.points[0][0];
+              const startY = arrow.y + arrow.points[0][1];
+              // Vector from old center to old start point.
+              const dx = startX - oldCx;
+              const dy = startY - oldCy;
+              // Scale by ratio of new to old dimensions.
+              const scaleX = ob.width > 0 ? container.width / ob.width : 1;
+              const scaleY = ob.height > 0 ? container.height / ob.height : 1;
+              // New center is same (center-preserving expansion).
+              const newStartX = oldCx + dx * scaleX;
+              const newStartY = oldCy + dy * scaleY;
+              // Shift arrow origin; keep all other points' absolute positions the same.
+              const shiftX = newStartX - startX;
+              const shiftY = newStartY - startY;
+              arrow.x += shiftX;
+              arrow.y += shiftY;
+              // Adjust all subsequent points to compensate (they're relative to arrow.x,y).
+              for (let i = 1; i < arrow.points.length; i++) {
+                arrow.points[i] = [arrow.points[i][0] - shiftX, arrow.points[i][1] - shiftY];
+              }
+            }
+          }
+
+          // Adjust end point if bound to an expanded container.
+          if (endBound && expandedIds.has(endBound.elementId)) {
+            const container = byId.get(endBound.elementId);
+            const ob = originalBounds.get(endBound.elementId);
+            if (container && ob) {
+              const oldCx = ob.x + ob.width / 2;
+              const oldCy = ob.y + ob.height / 2;
+              const lastIdx = arrow.points.length - 1;
+              // Arrow end absolute position.
+              const endX = arrow.x + arrow.points[lastIdx][0];
+              const endY = arrow.y + arrow.points[lastIdx][1];
+              // Vector from old center to old end point.
+              const dx = endX - oldCx;
+              const dy = endY - oldCy;
+              // Scale by ratio of new to old dimensions.
+              const scaleX = ob.width > 0 ? container.width / ob.width : 1;
+              const scaleY = ob.height > 0 ? container.height / ob.height : 1;
+              const newEndX = oldCx + dx * scaleX;
+              const newEndY = oldCy + dy * scaleY;
+              // Update last point (relative to arrow.x, arrow.y).
+              arrow.points[lastIdx] = [
+                newEndX - arrow.x,
+                newEndY - arrow.y
+              ];
+            }
+          }
+
+          // Update arrow's width/height to match new points extent.
+          if ((startBound && expandedIds.has(startBound.elementId)) ||
+              (endBound && expandedIds.has(endBound.elementId))) {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const [px, py] of arrow.points) {
+              minX = Math.min(minX, px);
+              minY = Math.min(minY, py);
+              maxX = Math.max(maxX, px);
+              maxY = Math.max(maxY, py);
+            }
+            arrow.width = maxX - minX;
+            arrow.height = maxY - minY;
+          }
+        }
+      }
+
+      // --- Phase 2: Cascading containment ---
+      // If an inner element was expanded and now exceeds an outer element that
+      // previously contained it, expand the outer element to re-contain it.
+      // Preserve the original gap (padding) between inner and outer edges.
+
+      if (anyCorrections) {
+        // Build list of container-type elements (potential outer containers).
+        const containers = elements.filter(
+          el => !el.isDeleted && ["rectangle", "diamond", "ellipse"].includes(el.type)
+        );
+
+        // Determine original containment: which elements were fully inside which.
+        // An element A is "contained in" B if A's original bounds are fully within B's
+        // original bounds, A !== B, and A is not B's bound text container.
+        const containedIn = new Map(); // child ID -> parent ID
+        const originalGaps = new Map(); // "childId:parentId" -> {top, right, bottom, left}
+
+        for (const inner of containers) {
+          const ib = originalBounds.get(inner.id);
+          if (!ib) continue;
+
+          let bestParent = null;
+          let bestArea = Infinity;
+
+          for (const outer of containers) {
+            if (outer.id === inner.id) continue;
+            const ob = originalBounds.get(outer.id);
+            if (!ob) continue;
+
+            // Check if inner was fully inside outer (using original bounds).
+            if (ib.x >= ob.x && ib.y >= ob.y &&
+                ib.x + ib.width <= ob.x + ob.width &&
+                ib.y + ib.height <= ob.y + ob.height) {
+              // Pick the smallest containing parent (most immediate).
+              const area = ob.width * ob.height;
+              if (area < bestArea) {
+                bestArea = area;
+                bestParent = outer;
+              }
+            }
+          }
+
+          if (bestParent) {
+            const ob = originalBounds.get(bestParent.id);
+            containedIn.set(inner.id, bestParent.id);
+            originalGaps.set(`${inner.id}:${bestParent.id}`, {
+              top: ib.y - ob.y,
+              right: (ob.x + ob.width) - (ib.x + ib.width),
+              bottom: (ob.y + ob.height) - (ib.y + ib.height),
+              left: ib.x - ob.x
+            });
+          }
+        }
+
+        // Also check frameId relationships.
+        for (const el of elements) {
+          if (el.isDeleted || !el.frameId) continue;
+          const frame = byId.get(el.frameId);
+          if (!frame || frame.isDeleted) continue;
+          if (!containedIn.has(el.id)) {
+            containedIn.set(el.id, frame.id);
+            const ob = originalBounds.get(frame.id);
+            const ib = originalBounds.get(el.id);
+            if (ob && ib) {
+              originalGaps.set(`${el.id}:${frame.id}`, {
+                top: ib.y - ob.y,
+                right: (ob.x + ob.width) - (ib.x + ib.width),
+                bottom: (ob.y + ob.height) - (ib.y + ib.height),
+                left: ib.x - ob.x
+              });
+            }
+          }
+        }
+
+        // Propagate: loop until no further expansions needed.
+        let changed = true;
+        let iterations = 0;
+        const MAX_ITERATIONS = 10;
+
+        while (changed && iterations < MAX_ITERATIONS) {
+          changed = false;
+          iterations++;
+
+          for (const [childId, parentId] of containedIn) {
+            const child = byId.get(childId);
+            const parent = byId.get(parentId);
+            if (!child || !parent) continue;
+
+            const gaps = originalGaps.get(`${childId}:${parentId}`);
+            if (!gaps) continue;
+
+            // Calculate required parent bounds to contain the child with original gaps.
+            const needX = child.x - gaps.left;
+            const needY = child.y - gaps.top;
+            const needRight = child.x + child.width + gaps.right;
+            const needBottom = child.y + child.height + gaps.bottom;
+            const needW = needRight - needX;
+            const needH = needBottom - needY;
+
+            // Check if parent needs expansion.
+            let expanded = false;
+            if (needX < parent.x) { parent.x = needX; expanded = true; }
+            if (needY < parent.y) { parent.y = needY; expanded = true; }
+            if (needW > parent.width) { parent.width = needW; expanded = true; }
+            if (needH > parent.height) { parent.height = needH; expanded = true; }
+
+            // Recalculate: parent might have shifted, so recompute width/height.
+            const currentRight = parent.x + parent.width;
+            const currentBottom = parent.y + parent.height;
+            if (needRight > currentRight) {
+              parent.width = needRight - parent.x;
+              expanded = true;
+            }
+            if (needBottom > currentBottom) {
+              parent.height = needBottom - parent.y;
+              expanded = true;
+            }
+
+            if (expanded) changed = true;
+          }
+        }
+      }
+
+      return anyCorrections;
+    }
+
     window.renderDiagram = async function(jsonData) {
       try {
         const data = typeof jsonData === "string" ? JSON.parse(jsonData) : jsonData;
-        const elements = data.elements || [];
+        let elements = data.elements || [];
         const appState = data.appState || {};
         const files = data.files || {};
 
@@ -109,23 +444,91 @@
         appState.viewBackgroundColor = appState.viewBackgroundColor || "#ffffff";
         appState.exportWithDarkMode = false;
 
-        const svg = await exportToSvg({
+        // --- First render: measure actual text bounds ---
+        let svg = await exportToSvg({
           elements: elements,
-          appState: {
-            ...appState,
-            exportBackground: true,
-          },
+          appState: { ...appState, exportBackground: true },
           files: files,
         });
 
-        // Clear any previous render
+        svg.setAttribute("overflow", "visible");
+
         const root = document.getElementById("root");
         root.innerHTML = "";
         root.appendChild(svg);
 
+        await document.fonts.ready;
+
+        // --- Detect and fix text overflows ---
+        const corrected = detectAndFixOverflows(elements, svg);
+
+        // --- Re-render if corrections were made ---
+        if (corrected) {
+          svg = await exportToSvg({
+            elements: elements,
+            appState: { ...appState, exportBackground: true },
+            files: files,
+          });
+
+          svg.setAttribute("overflow", "visible");
+          root.innerHTML = "";
+          root.appendChild(svg);
+
+          await document.fonts.ready;
+        }
+
+        // --- ViewBox expansion (existing logic, runs on final SVG) ---
+        const ctm = svg.getScreenCTM();
+        const vbAttr = svg.getAttribute("viewBox");
+        if (ctm && vbAttr) {
+          const [origVx, origVy, origVw, origVh] = vbAttr.split(" ").map(Number);
+          const invCTM = ctm.inverse();
+
+          let pxMinX = Infinity, pxMinY = Infinity;
+          let pxMaxX = -Infinity, pxMaxY = -Infinity;
+          for (const el of svg.querySelectorAll("*")) {
+            const rect = el.getBoundingClientRect();
+            if (rect.width === 0 && rect.height === 0) continue;
+            pxMinX = Math.min(pxMinX, rect.left);
+            pxMinY = Math.min(pxMinY, rect.top);
+            pxMaxX = Math.max(pxMaxX, rect.right);
+            pxMaxY = Math.max(pxMaxY, rect.bottom);
+          }
+
+          if (pxMinX !== Infinity) {
+            const svgMin = new DOMPoint(pxMinX, pxMinY).matrixTransform(invCTM);
+            const svgMax = new DOMPoint(pxMaxX, pxMaxY).matrixTransform(invCTM);
+
+            const pad = 40;
+            const newVx = Math.min(origVx, svgMin.x) - pad;
+            const newVy = Math.min(origVy, svgMin.y) - pad;
+            const newMaxX = Math.max(origVx + origVw, svgMax.x) + pad;
+            const newMaxY = Math.max(origVy + origVh, svgMax.y) + pad;
+            const newVw = newMaxX - newVx;
+            const newVh = newMaxY - newVy;
+
+            const origW = parseFloat(svg.getAttribute("width"));
+            const pxPerUnit = origW / origVw;
+            svg.setAttribute("viewBox", `${newVx} ${newVy} ${newVw} ${newVh}`);
+            svg.setAttribute("width", newVw * pxPerUnit);
+            svg.setAttribute("height", newVh * pxPerUnit);
+          }
+        }
+
+        svg.removeAttribute("overflow");
+
         window.__renderComplete = true;
         window.__renderError = null;
-        return { success: true, width: svg.getAttribute("width"), height: svg.getAttribute("height") };
+
+        const result = {
+          success: true,
+          width: svg.getAttribute("width"),
+          height: svg.getAttribute("height")
+        };
+        if (corrected) {
+          result.correctedElements = elements;
+        }
+        return result;
       } catch (err) {
         window.__renderComplete = true;
         window.__renderError = err.message;
