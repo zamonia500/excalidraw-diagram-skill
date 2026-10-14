@@ -1,5 +1,9 @@
 """Render Excalidraw JSON to PNG using Playwright + headless Chromium.
 
+The PNG is written as <name>.excalidraw.png with the scene embedded (the same
+format as Excalidraw's "Embed scene" export), so it can be reopened and edited
+on excalidraw.com or in editors that recognize the .excalidraw.png suffix.
+
 Usage (<skill-dir> is wherever the skill is installed; works from any cwd):
     uv run --project <skill-dir>/references python <skill-dir>/references/render_excalidraw.py \
         <path-to-file.excalidraw> [--output path.png] [--scale 2] [--width 1920]
@@ -13,7 +17,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import struct
 import sys
+import zlib
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -74,6 +80,46 @@ def compute_bounding_box(elements: list[dict]) -> tuple[float, float, float, flo
     return (min_x, min_y, max_x, max_y)
 
 
+# tEXt keyword Excalidraw uses for scene data embedded in PNGs (MIME_TYPES.excalidraw).
+EXCALIDRAW_PNG_KEYWORD = b"application/vnd.excalidraw+json"
+
+
+def default_output_path(excalidraw_path: Path) -> Path:
+    """diagram.excalidraw -> diagram.excalidraw.png (other suffixes are replaced)."""
+    return excalidraw_path.with_suffix(".excalidraw.png")
+
+
+def embed_scene_in_png(png_path: Path, data: dict) -> None:
+    """Embed the scene as a tEXt chunk the way Excalidraw's encodePngMetadata does.
+
+    The chunk text is JSON {version, encoding: "bstring", compressed, encoded}, where
+    `encoded` is the zlib-deflated UTF-8 scene JSON as a byte string (one char per
+    byte). Excalidraw's loadFromBlob/decodePngMetadata reads it back.
+    """
+    scene = json.dumps(data, ensure_ascii=False).encode("utf-8")
+    payload = {
+        "version": "1",
+        "encoding": "bstring",
+        "compressed": True,
+        "encoded": zlib.compress(scene).decode("latin-1"),
+    }
+    text = json.dumps(payload, ensure_ascii=False).encode("latin-1")
+    chunk_data = EXCALIDRAW_PNG_KEYWORD + b"\0" + text
+    chunk = (
+        struct.pack(">I", len(chunk_data))
+        + b"tEXt"
+        + chunk_data
+        + struct.pack(">I", zlib.crc32(b"tEXt" + chunk_data) & 0xFFFFFFFF)
+    )
+
+    png = png_path.read_bytes()
+    # IEND is always the final 12-byte chunk; insert the metadata right before it.
+    iend = png.rfind(b"IEND") - 4
+    if iend < 8:
+        raise ValueError(f"{png_path} is not a valid PNG (no IEND chunk)")
+    png_path.write_bytes(png[:iend] + chunk + png[iend:])
+
+
 def render(
     excalidraw_path: Path,
     output_path: Path | None = None,
@@ -118,7 +164,7 @@ def render(
 
     # Output path
     if output_path is None:
-        output_path = excalidraw_path.with_suffix(".png")
+        output_path = default_output_path(excalidraw_path)
 
     # Template path (same directory as this script)
     template_path = REFS_DIR / "render_template.html"
@@ -240,13 +286,16 @@ def render(
         svg_el.screenshot(path=str(output_path))
         browser.close()
 
+    # Embed the (possibly auto-corrected) scene so the PNG stays editable.
+    embed_scene_in_png(output_path, data)
+
     return output_path
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Render Excalidraw JSON to PNG")
     parser.add_argument("input", type=Path, help="Path to .excalidraw JSON file")
-    parser.add_argument("--output", "-o", type=Path, default=None, help="Output PNG path (default: same name with .png)")
+    parser.add_argument("--output", "-o", type=Path, default=None, help="Output PNG path (default: <name>.excalidraw.png next to the input)")
     parser.add_argument("--scale", "-s", type=int, default=2, help="Device scale factor (default: 2)")
     parser.add_argument("--width", "-w", type=int, default=1920, help="Max viewport width (default: 1920)")
     parser.add_argument("--break-source", action="append", default=None, metavar="NAME",
