@@ -180,3 +180,124 @@ Copy-paste JSON templates for each Excalidraw element type. The `strokeColor` an
 ```
 
 For curves: use 3+ points in `points` array.
+
+## Bound Arrow (fully wired — source rect → arrow → target rect)
+
+When arrows must stay connected to shapes as elements move, every binding reference must be
+bidirectional: the arrow's `startBinding`/`endBinding` point to the shapes, AND each shape's
+`boundElements` array lists the arrow back.
+
+**Before (broken — arrow drifts):**
+```python
+# BROKEN pattern: null bindings cause visual drift when shapes move
+arrow = {
+    "type": "arrow",
+    "id": "arrow1",
+    "startBinding": None,   # <-- arrow is not attached to anything
+    "endBinding": None,     # <-- arrow is not attached to anything
+}
+```
+
+**After (correct — arrow stays connected):**
+```python
+# CORRECT pattern: bindings are set on the arrow AND reflected in boundElements on each shape
+source_rect = {
+    "type": "rectangle",
+    "id": "source_rect",
+    "boundElements": [{"id": "arrow1", "type": "arrow"}],  # arrow listed here
+}
+arrow = {
+    "type": "arrow",
+    "id": "arrow1",
+    "startBinding": {"elementId": "source_rect", "focus": 0.0, "gap": 5},  # points to source
+    "endBinding":   {"elementId": "target_rect", "focus": 0.0, "gap": 5},  # points to target
+}
+target_rect = {
+    "type": "rectangle",
+    "id": "target_rect",
+    "boundElements": [{"id": "arrow1", "type": "arrow"}],  # arrow listed here too
+}
+```
+
+**Full 3-element JSON example (source rect → arrow → target rect):**
+```json
+[
+  {
+    "type": "rectangle",
+    "id": "source_rect",
+    "x": 100, "y": 200, "width": 160, "height": 80,
+    "strokeColor": "<stroke from palette>",
+    "backgroundColor": "<fill from palette>",
+    "fillStyle": "solid",
+    "strokeWidth": 2,
+    "strokeStyle": "solid",
+    "roughness": 0,
+    "opacity": 100,
+    "angle": 0,
+    "seed": 10001,
+    "version": 1,
+    "versionNonce": 10002,
+    "isDeleted": false,
+    "groupIds": [],
+    "boundElements": [{"id": "conn_arrow", "type": "arrow"}],
+    "link": null,
+    "locked": false,
+    "roundness": {"type": 3}
+  },
+  {
+    "type": "arrow",
+    "id": "conn_arrow",
+    "x": 262, "y": 240, "width": 138, "height": 0,
+    "strokeColor": "<arrow color from palette>",
+    "backgroundColor": "transparent",
+    "fillStyle": "solid",
+    "strokeWidth": 2,
+    "strokeStyle": "solid",
+    "roughness": 0,
+    "opacity": 100,
+    "angle": 0,
+    "seed": 20001,
+    "version": 1,
+    "versionNonce": 20002,
+    "isDeleted": false,
+    "groupIds": [],
+    "boundElements": null,
+    "link": null,
+    "locked": false,
+    "points": [[0, 0], [138, 0]],
+    "startBinding": {"elementId": "source_rect", "focus": 0.0, "gap": 5},
+    "endBinding":   {"elementId": "target_rect", "focus": 0.0, "gap": 5},
+    "startArrowhead": null,
+    "endArrowhead": "arrow"
+  },
+  {
+    "type": "rectangle",
+    "id": "target_rect",
+    "x": 400, "y": 200, "width": 160, "height": 80,
+    "strokeColor": "<stroke from palette>",
+    "backgroundColor": "<fill from palette>",
+    "fillStyle": "solid",
+    "strokeWidth": 2,
+    "strokeStyle": "solid",
+    "roughness": 0,
+    "opacity": 100,
+    "angle": 0,
+    "seed": 30001,
+    "version": 1,
+    "versionNonce": 30002,
+    "isDeleted": false,
+    "groupIds": [],
+    "boundElements": [{"id": "conn_arrow", "type": "arrow"}],
+    "link": null,
+    "locked": false,
+    "roundness": {"type": 3}
+  }
+]
+```
+
+**Key rules for bound arrows:**
+- `startBinding.elementId` must equal the `id` of the shape at the arrow's start
+- `endBinding.elementId` must equal the `id` of the shape at the arrow's end
+- Both shapes must include `{"id": "<arrow_id>", "type": "arrow"}` in their `boundElements` array
+- `focus: 0.0` centres the arrow on the shape's edge; range is `-1.0` to `1.0`
+- `gap: 5` leaves a small visual gap between the arrowhead and the shape border
