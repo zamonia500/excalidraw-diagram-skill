@@ -189,6 +189,7 @@ For each concept, find the visual pattern that mirrors its behavior:
 | Is an abstract state or context | **Cloud** (overlapping ellipses) |
 | Transforms input to output | **Assembly line** (before → process → after) |
 | Compares two things | **Side-by-side** (parallel with contrast) |
+| Has parallel owners or teams | **Swimlane** (side-by-side frames with labels) |
 | Separates into phases | **Gap/Break** (visual separation between sections) |
 
 ### Step 3: Ensure Variety
@@ -305,6 +306,30 @@ Two parallel structures with visual contrast. Use for: before/after, options, tr
 
 ### Gap/Break (Separation)
 Visual whitespace or barrier between sections. Use for: phase changes, context resets, boundaries.
+
+### Swimlane (Parallel Responsibilities)
+Use when: comparing parallel processes side by side, showing responsibilities across teams or services, or organising a workflow by owner.
+
+Structure: two or more side-by-side `frame` elements, each with a descriptive `name` label. Each frame contains its own elements (shapes, text, arrows). Arrows that cross between frames are allowed — they still carry `frameId: null` because they are not owned by either frame.
+
+Coordinate recipe:
+- Frame 1: `x=0`, `width=400`
+- Frame 2: `x=460`, `width=400` (60 px gap between frames)
+- Additional frames: increment x by `width + 60` each time
+- All frames share the same `y` and `height`
+- Every element inside a frame must have `"frameId": "<that_frame_id>"`
+
+```
+┌─── Team A ──────────┐  ┌─── Team B ──────────┐
+│                     │  │                     │
+│  [Step 1]           │  │  [Step 1]           │
+│      │              │  │      │              │
+│  [Step 2] ──────────┼──┼─► [Step 2]          │
+│      │              │  │      │              │
+│  [Step 3]           │  │  [Step 3]           │
+│                     │  │                     │
+└─────────────────────┘  └─────────────────────┘
+```
 
 ### Lines as Structure
 Use lines (type: `line`, not arrows) as primary structural elements instead of boxes:
