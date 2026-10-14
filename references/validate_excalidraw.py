@@ -11,7 +11,7 @@ Catches JSON errors that the visual render loop cannot detect:
   - Text containerId referencing a non-existent ID
   - boundElements entries referencing non-existent IDs
   - NaN or Infinity in x, y, width, height
-  - Missing or non-string index on every element
+  - Non-string index (missing index is allowed)
 
 Usage:
     uv run python references/validate_excalidraw.py <path-to-file.excalidraw>
@@ -189,11 +189,11 @@ def validate_elements(elements):
         if etype not in VALID_TYPES:
             errors.append(f"{label}: invalid type '{etype}' (valid: {sorted(VALID_TYPES)})")
 
-        # --- index present and is a string ---
+        # --- index, if present, is a string ---
+        # Missing index is fine: Excalidraw assigns fractional indices on load,
+        # and most templates in element-templates.md omit it.
         index = el.get("index")
-        if index is None:
-            errors.append(f"{label}: missing 'index' property")
-        elif not isinstance(index, str):
+        if index is not None and not isinstance(index, str):
             errors.append(f"{label}: 'index' must be a string, got {type(index).__name__}")
 
         # --- NaN / Infinity in geometry ---
