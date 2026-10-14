@@ -10,7 +10,7 @@
 | `arrow` | Connections between shapes |
 | `text` | Labels inside shapes |
 | `line` | Non-arrow connections |
-| `frame` | Grouping containers |
+| `frame` | Labelled grouping containers (swimlanes, sections) |
 
 ## Common Properties
 
@@ -86,6 +86,18 @@ The binding object used in `startBinding` and `endBinding` on an arrow:
 ```
 
 **Never use `null` bindings for intentionally-connected arrows.** Null bindings (`"startBinding": null`) produce arrows that appear connected visually at first but drift as soon as either shape is moved. See `references/element-templates.md` for a complete wired example.
+
+## Frame-Specific Properties
+
+| Property | Description |
+|----------|-------------|
+| `name` | The visible label displayed at the top of the frame |
+| `isCollapsed` | Whether the frame is collapsed; always `false` for visible frames |
+| `frameId` | Always `null` for frames themselves (frames cannot be nested) |
+| `index` | Fractional index string (e.g. `"a1"`, `"a2"`) for rendering order |
+| `updated` | Unix timestamp in milliseconds |
+
+**Child element rule**: Any element positioned inside a frame's bounds must have `"frameId"` set to that frame's `id`. Elements outside all frames use `"frameId": null`.
 
 ## Rectangle Roundness
 
