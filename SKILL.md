@@ -390,7 +390,8 @@ def seq_diagram(participants, messages):
             "fillStyle": "solid", "strokeWidth": 2, "strokeStyle": "solid",
             "roughness": 0, "opacity": 100, "angle": 0,
             "seed": seed, "version": 1, "versionNonce": seed + 1,
-            "isDeleted": False, "groupIds": [], "boundElements": None,
+            "isDeleted": False, "groupIds": [],
+            "boundElements": [{"id": f"p{i}_label", "type": "text"}],
             "link": None, "locked": False, "roundness": {"type": 3}
         })
         seed += 2
