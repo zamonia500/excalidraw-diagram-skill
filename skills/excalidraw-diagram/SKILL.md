@@ -201,7 +201,7 @@ For multi-concept diagrams: **each major concept must use a different visual pat
 Before JSON, mentally trace how the eye moves through the diagram. There should be a clear visual story.
 
 ### Step 5: Generate JSON
-Only now create the Excalidraw elements. **See below for how to handle large diagrams.**
+Only now create the Excalidraw elements. Write descriptions in Korean and keep identifiers verbatim (see **Language** below). **See below for how to handle large diagrams.**
 
 ### Step 6: Render & Validate (MANDATORY)
 After generating the JSON, you MUST run the render-view-fix loop until the diagram looks right. This is not optional — see the **Render & Validate** section below for the full process.
@@ -574,6 +574,32 @@ Settings: `fontSize: 16`, `fontFamily: 3`, `textAlign: "center"`, `verticalAlign
 
 ---
 
+## Language: Korean Descriptions, Verbatim Identifiers
+
+**Write all descriptive text in Korean by default**, even when the source material (code, docs, specs) is in English. Keep anything that comes from the codebase or a spec **exactly as written**. If the user explicitly asks for another language, follow the user instead.
+
+| Write in Korean | Keep verbatim (never translate or transliterate) |
+|-----------------|--------------------------------------------------|
+| Diagram title, section/frame titles | Class, function, method, variable, type names (`UserService.fetch()`) |
+| Explanations, annotations, captions | File paths, module/package names, CLI commands and flags |
+| Step descriptions, timeline labels | Config keys, env vars, feature flags, enum values |
+| Arrow labels that describe an action ("토큰 검증") | API endpoints, HTTP methods/status codes, event/topic/queue names |
+| Legends, notes, "why" callouts | DB tables/columns, error messages and log lines quoted from the code |
+| Concept nodes with no code counterpart | Product, library, and protocol names (Kafka, Redis, OAuth 2.0), acronyms (API, JWT) |
+
+- **Evidence artifacts stay as they are.** Code snippets, JSON payloads, and log excerpts are real data, so don't translate their contents. Put Korean explanations in free-floating text next to them.
+- **Mixing within one label:** keep the identifier unchanged and attach Korean particles or descriptions directly: `UserService.fetch()로 사용자 조회`, `orders 테이블에 INSERT`. Don't add backticks or quotes (they render literally). When the identifier is the main point, put it on the first line and a smaller Korean description below it:
+  ```
+  POST /api/orders
+  주문 생성 및 재고 예약
+  ```
+- **Technical terms:** use the words Korean developers actually use (캐시, 큐, 토큰, 배포, 롤백). Don't force awkward literal translations (e.g. 대기열 for queue in a system diagram). For a term with no settled Korean form, keep the English term.
+- **Tone:** short noun phrases (명사형 종결) like "요청 검증", "캐시 미스 시 DB 조회", not full sentences ending in "~합니다".
+- **What stays ASCII:** element `id`s, file names, and every JSON key. Only `text`/`originalText` and frame `name` hold Korean.
+- **Sizing:** Hangul glyphs are much wider than Latin ones. Use the Korean-aware formula in **Sizing Containers for Text** below.
+
+---
+
 ## Sizing Containers for Text
 
 **The problem**: Hardcoded guesses for `width`/`height` cause text overflow in rendered diagrams. A container that looks right in JSON can clip its label at render time, especially for multi-line or long strings.
@@ -583,11 +609,17 @@ Settings: `fontSize: 16`, `fontFamily: 3`, `textAlign: "center"`, `verticalAlign
 Use when you don't have Node.js canvas available:
 
 ```python
-width  = max(len(line) for line in text.split('\n')) * font_size * 0.6 + 40
+import unicodedata
+
+def text_units(line):
+    # Hangul/CJK (East Asian wide) glyphs ≈ 1.0 × font_size; Latin, digits, spaces ≈ 0.6
+    return sum(1.0 if unicodedata.east_asian_width(c) in "WF" else 0.6 for c in line)
+
+width  = max(text_units(line) for line in text.split('\n')) * font_size + 40
 height = text.count('\n') * font_size * 1.35 + font_size * 1.35 + 24
 ```
 
-`font_size` is typically 16–20 for body text.
+`font_size` is typically 16–20 for body text. Hangul measures about 0.86 × font_size in the renderer (the exact value depends on the fallback font the OS supplies), so 1.0 keeps a safety margin. Counting Korean characters at 0.6 underestimates the width and causes overflow.
 
 ### Node.js canvas measurement (more accurate)
 
@@ -780,13 +812,14 @@ independent CDNs in order (esm.sh, then jsDelivr), each with its own timeout.
 18. **Roughness**: `roughness: 0` for clean/modern (unless hand-drawn style requested)
 19. **Opacity**: `opacity: 100` for all elements (no transparency)
 20. **Container ratio**: <30% of text elements should be inside containers
+21. **Language**: Descriptions are in Korean; identifiers, paths, commands, and evidence artifacts are verbatim from the source
 
 ### Visual Validation (Render Required)
-21. **Rendered to PNG**: Diagram has been rendered and visually inspected
-22. **No text overflow**: All text fits within its container
-23. **No overlapping elements**: Shapes and text don't overlap unintentionally
-24. **Even spacing**: Similar elements have consistent spacing
-25. **Arrows land correctly**: Arrows connect to intended elements without crossing others
+22. **Rendered to PNG**: Diagram has been rendered and visually inspected
+23. **No text overflow**: All text fits within its container
+24. **No overlapping elements**: Shapes and text don't overlap unintentionally
+25. **Even spacing**: Similar elements have consistent spacing
+26. **Arrows land correctly**: Arrows connect to intended elements without crossing others
     - Arrow `startBinding`/`endBinding` must reference the actual `id` of the element at each end — null bindings cause drift
-26. **Readable at export size**: Text is legible in the rendered PNG
-27. **Balanced composition**: No large empty voids or overcrowded regions
+27. **Readable at export size**: Text is legible in the rendered PNG
+28. **Balanced composition**: No large empty voids or overcrowded regions
